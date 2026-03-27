@@ -1,6 +1,23 @@
     #include <stdio.h>
     #include <string.h>
 
+    int gcd(int a, int b)
+    {   
+        if(!a || !b)
+            return 1;
+        if(a < b)
+        {
+            int temp = a;
+            a = b;
+            b = temp;
+        }
+        int r = a % b;
+        if(r == 0)
+            return b;
+        else
+            return gcd(b, r);
+    }
+
     int str2Int(char str[], int startIndex, int endIndex)
     {
         int result = 0;
@@ -90,8 +107,25 @@
                 isNagitiveResult = isNagitive1 ^ isNagitive2;
                 break;
             }
+            if(downResult == 0)
+            {
+                printf("error\n");
+                scanf(" %c", &yorn);
+                continue;
+            }
+            int g = gcd(upResult, downResult);
+            upResult /= g;
+            downResult /= g;
+            intResult = upResult / downResult;
+            upResult = upResult % downResult;
+            if(upResult == 0)
+                printf("%d\n", (isNagitiveResult ? -intResult : intResult));
+            else if(intResult)
+                printf("%d(%d/%d)\n", (isNagitiveResult ? -intResult : intResult), upResult, downResult);
+            else
+                printf("%d/%d\n", (isNagitiveResult ? -upResult : upResult), downResult);
             scanf(" %c", &yorn);
         } while(yorn == 'y');
-        
+
         return 0;
     }
