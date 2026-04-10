@@ -1,146 +1,99 @@
 #include "raylib.h"
-#include <stdlib.h>
-#include <time.h>
-#include <stdio.h>
-
-#define ROWS 4
-#define COLS 8
-#define CELL_SIZE 70
-#define MARGIN 50
-
-int board[ROWS][COLS];
-int revealed[ROWS][COLS];
-
-Texture2D pieceTextures[14];
-
-void initBoard() {
-    int initialPieces[32] = {
-        0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6,
-        7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 13, 13, 13
-    };
-
-    int i, j, temp, r, c;
-    int k = 0;
-
-    srand(time(NULL));
-
-    for (i = 31; i > 0; i--) {
-        j = rand() % (i + 1);
-        temp = initialPieces[i];
-        initialPieces[i] = initialPieces[j];
-        initialPieces[j] = temp;
-    }
-
-    for (r = 0; r < ROWS; r++) {
-        for (c = 0; c < COLS; c++) {
-            board[r][c] = initialPieces[k++];
-            revealed[r][c] = 0; 
-        }
-    }
-}
-
-void drawBoard() {
-    int r, c;
-    int left, top, right, bottom;
-
-    ClearBackground(LIGHTGRAY);
-
-    for (r = 0; r <= ROWS; r++) {
-        DrawLine(MARGIN, MARGIN + r * CELL_SIZE, MARGIN + COLS * CELL_SIZE, MARGIN + r * CELL_SIZE, BLACK);
-    }
-    for (c = 0; c <= COLS; c++) {
-        DrawLine(MARGIN + c * CELL_SIZE, MARGIN, MARGIN + c * CELL_SIZE, MARGIN + ROWS * CELL_SIZE, BLACK);
-    }
-
-    for (r = 0; r < ROWS; r++) {
-        for (c = 0; c < COLS; c++) {
-            left = MARGIN + c * CELL_SIZE + 5;
-            top = MARGIN + r * CELL_SIZE + 5;
-            right = MARGIN + (c + 1) * CELL_SIZE - 5;
-            bottom = MARGIN + (r + 1) * CELL_SIZE - 5;
-
-            if (revealed[r][c] == 0) { 
-                DrawRectangle(left, top, right - left, bottom - top, GREEN);
-            } else { 
-                Texture2D tex = pieceTextures[board[r][c]];
-                Rectangle sourceRec = { 0.0f, 0.0f, (float)tex.width, (float)tex.height }; 
-                Rectangle destRec = { (float)left, (float)top, (float)(right - left), (float)(bottom - top) }; 
-                Vector2 origin = { 0.0f, 0.0f };
-                DrawTexturePro(tex, sourceRec, destRec, origin, 0.0f, WHITE);
-            }
-        }
-    }
-}
+#include "config.h"
+#include "game_logic.h"
+#include "renderer.h"
+#include "ai.h"
+#include <stdlib.h> // 需要 abs()
 
 int main() {
-    int totalPieces = 32; 
-    int revealedCount = 0; 
-    int x, y, c, r, compR, compC;
-
     int screenWidth = MARGIN * 2 + COLS * CELL_SIZE;
-    int screenHeight = MARGIN * 2 + ROWS * CELL_SIZE;
-    InitWindow(screenWidth, screenHeight, "chess");
-
+    int screenHeight = MARGIN * 2 + ROWS * CELL_SIZE + 80;
+    
+    InitWindow(screenWidth, screenHeight, "Dark Chess");
     SetTargetFPS(60);
 
-    for (int i = 0; i < 14; i++) {
-        char filename[20];
-        sprintf(filename, "images\\%d.png", i); 
-        pieceTextures[i] = LoadTexture(filename);
-    }
-
+    // 從 renderer 模組載入圖片
+    loadTextures();
+    // 從 game_logic 模組初始化棋盤
     initBoard();
 
     while (!WindowShouldClose()) {
+        // --- 狀態0：選先後手 ---
+        if (gameState == 0) {
+            if (IsKeyPressed(KEY_P)) { currentTurn = 0; gameState = 1; }
+            if (IsKeyPressed(KEY_C)) { currentTurn = 1; gameState = 1; }
+        }
 
+        // --- 檢查遊戲結束 (各走10步) ---
+        if (gameState == 1 && playerSteps >= 10 && compSteps >= 10) {
+            gameState = 2;
+        }
 
-        if (revealedCount < totalPieces) {
+        // --- 狀態1：遊戲進行中 (玩家回合) ---
+        if (gameState == 1 && currentTurn == 0 && playerSteps < 10) {
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                x = GetMouseX();
-                y = GetMouseY();
-                if (x > MARGIN && x < MARGIN + COLS * CELL_SIZE &&
-                    y > MARGIN && y < MARGIN + ROWS * CELL_SIZE) {
+                int x = GetMouseX();
+                int y = GetMouseY();
 
-                    c = (x - MARGIN) / CELL_SIZE; 
-                    r = (y - MARGIN) / CELL_SIZE; 
+                if (x > MARGIN && x < MARGIN + COLS * CELL_SIZE && y > MARGIN && y < MARGIN + ROWS * CELL_SIZE) {
+                    int c = (x - MARGIN) / CELL_SIZE;
+                    int r = (y - MARGIN) / CELL_SIZE;
 
-                    if (revealed[r][c] == 0) {
+                    if (revealed[r][c] == 0 && selectedR == -1) {
                         revealed[r][c] = 1;
-                        revealedCount++;
-
-                        if (revealedCount < totalPieces) {
-                            while (1) {
-                                compR = rand() % ROWS;
-                                compC = rand() % COLS;
-
-                                if (revealed[compR][compC] == 0) {
-                                    revealed[compR][compC] = 1;
-                                    revealedCount++;
-                                    break;
+                        if (playerFaction == -1) {
+                            playerFaction = getFaction(board[r][c]);
+                            aiFaction = 1 - playerFaction;
+                        }
+                        playerSteps++;
+                        currentTurn = 1;
+                    }
+                    else if (revealed[r][c] == 1 && getFaction(board[r][c]) == playerFaction) {
+                        selectedR = r;
+                        selectedC = c;
+                    }
+                    else if (selectedR != -1) {
+                        if (abs(r - selectedR) + abs(c - selectedC) == 1) {
+                            if (revealed[r][c] == -1) {
+                                board[r][c] = board[selectedR][selectedC];
+                                revealed[r][c] = 1;
+                                revealed[selectedR][selectedC] = -1;
+                                selectedR = -1;
+                                playerSteps++;
+                                currentTurn = 1;
+                            }
+                            else if (revealed[r][c] == 1 && getFaction(board[r][c]) != playerFaction) {
+                                if (canEat(board[selectedR][selectedC], board[r][c])) {
+                                    board[r][c] = board[selectedR][selectedC];
+                                    revealed[selectedR][selectedC] = -1;
+                                    selectedR = -1;
+                                    playerSteps++;
+                                    currentTurn = 1;
                                 }
                             }
+                        } else {
+                            selectedR = -1;
                         }
                     }
                 }
             }
         }
 
-        BeginDrawing();
-
-        drawBoard();
-
-        if (revealedCount >= totalPieces) {
-            DrawText("Game Over!", MARGIN, 10, 30, RED);
+        // --- 狀態1：遊戲進行中 (電腦回合) ---
+        if (gameState == 1 && currentTurn == 1 && compSteps < 10) {
+            playAiTurn();
+            if (playerSteps >= 10 && compSteps >= 10) gameState = 2;
         }
 
+        // --- 繪圖區 ---
+        BeginDrawing();
+        drawBoard();
         EndDrawing();
     }
 
-    for (int i = 0; i < 14; i++) {
-        UnloadTexture(pieceTextures[i]);
-    }
-
+    // 釋放記憶體並關閉
+    unloadTextures();
     CloseWindow();
-
+    
     return 0;
 }
