@@ -37,10 +37,10 @@ void pairSort(pair pairs[], int count)
     }
 }
 
+pair pairs[12100];
 int main()
 {
     int N, list[110], count = 0;
-    pair pairs[12100];
 
     scanf("%d", &N);
     for(int i = 0; i < N; i++)
